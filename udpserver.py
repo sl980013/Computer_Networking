@@ -1,9 +1,9 @@
+import base64
 import socket
 import os
 import json
 import rsa
 from better_profanity import profanity
-import requests
 
 
 def send_data(sock, json_data):
@@ -48,8 +48,10 @@ def receive_data(sock, expected_message_type):
         senderKey = rsa.PublicKey.load_pkcs1(jobject.get("content").encode())
 
     elif jpacket == "message":
-        pmessage = profanity.censor(rsa.decrypt(jobject.get("content").encode('latin-1'), privateKey).decode())
-        print(pmessage)
+        pmessage = jobject.get("content")
+        decode_message = base64.b64decode(pmessage)
+        pmessage = rsa.decrypt(decode_message, privateKey).decode()
+        print(profanity.censor(pmessage))
 
         # cache = dict()
         # def get_pmessage_from_server(pmessage):
@@ -138,9 +140,11 @@ while True:
     Sending our username
     """
     # This RSA algorithm encrypts with latin-1 encoding
-    encryptedUsername = rsa.encrypt(local_user.encode(), senderKey).decode('latin-1')
+    encrypt_username = rsa.encrypt(local_user.encode(), senderKey)
+    encrypt_username = base64.b16encode(encrypt_username)
+    str(encrypt_username, "latin-1")
 
-    data = {"type": "recipient_username", "content": encryptedUsername}
+    data = {"type": "recipient_username", "content": encrypt_username}
     data = json.dumps(data)
     try:
         send_data(server_socket, data)
@@ -159,7 +163,10 @@ while True:
     Reply with our own message
     """
     message = "\n\nThank you for your message!\n\n"
-    message = rsa.encrypt(message.encode(), senderKey).decode('latin-1')
+    message = rsa.encrypt(message.encode(), senderKey)
+    message = base64.b64encode(message)
+    message = str(message, "latin-1")
+
     data = {"type": "message", "content": message}
     data = json.dumps(data)
     try:

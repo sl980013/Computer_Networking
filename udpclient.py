@@ -1,3 +1,4 @@
+import base64
 import socket
 import os
 import json
@@ -87,10 +88,15 @@ def receive_data(sock, expected_type):
         receiver_key = rsa.PublicKey.load_pkcs1(jobject.get("content").encode())
     elif jpacket == "recipient_username":
         global receiver_name
-        receiver_name = rsa.decrypt(jobject.get("content").encode('latin-1'), privateKey).decode()
+
+        receiver_name = jobject.get("content")
+        decode_name = base64.b64decode(receiver_name)
+        receiver_name = rsa.decrypt(decode_name, privateKey).decode()
 
     elif jpacket == "message":
-        print(profanity.censor(rsa.decrypt(jobject.get("content").encode('latin-1'), privateKey).decode()))
+        message = jobject.get("content")
+        decode_message = base64.b64decode(message)
+
     # sends an ACK packet back to confirm the data was received
     data = {"type": "ack"}
     json_data = json.dumps(data)
@@ -292,10 +298,12 @@ for i, receiver in enumerate(receiver_list):
 
 
     message = "\n-+-+-+-+-\n"+greeting + receiver_name + ".\nYou've received another message: "+optional_message + "\n\nFrom: " + local_user +"\n-+-+-+-+-\n"
-    print("Sending Message: \n",message+"\n")
-    message = rsa.encrypt(message.encode(), receiver_key).decode('latin-1')
+    print("Sending Message: \n", message+"\n")
+    message = rsa.encrypt(message.encode(), receiver_key)
+    message = base64.b64encode(message)
+    message = str(message, "latin-1")
 
-    data = {"type": "message", "content":message}
+    data = {"type": "message", "content": message}
 
     # Tries to send the json payload to the address
     try:
