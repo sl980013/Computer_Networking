@@ -6,6 +6,7 @@ import datetime
 import zlib
 from better_profanity import profanity
 
+
 """"
 Use CRC32 to calculate a checksum for our data to be sent
 Take json data to compare the checksum with the calculated checksum in json object
@@ -237,15 +238,15 @@ for i, receiver in enumerate(receiver_list):
         try:
             send_data(client_socket, data)
         except:
-            print("Error, cannot establish connection with current IP, moving on to next address\n\n")
+            print("Error, can't establish connection with current IP. Moving on to next address\n\n")
             client_socket.close()
             continue
     except socket.error:
-        print("Error with connection - Resending Data")
+        print("Error with connection: Resending Data")
         try:
             send_data(client_socket, data)
         except:
-            print("Error, cannot establish connection with current IP, moving on to next address\n\n")
+            print("Error, can't establish connection with current IP. Moving on to next address\n\n")
             client_socket.close()
             continue
     except:
@@ -289,7 +290,8 @@ for i, receiver in enumerate(receiver_list):
     else:
         greeting = "Good Evening, "
 
-    message = "\n-----\n"+greeting + receiver_name + ".\n"+optional_message + "\n\nFrom: " + local_user +"\n-----\n"
+
+    message = "\n-+-+-+-+-\n"+greeting + receiver_name + ".\nYou've received another message: "+optional_message + "\n\nFrom: " + local_user +"\n-+-+-+-+-\n"
     print("Sending Message: \n",message+"\n")
     message = rsa.encrypt(message.encode(), receiver_key).decode('latin-1')
 

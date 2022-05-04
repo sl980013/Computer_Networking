@@ -3,13 +3,14 @@ import os
 import json
 import rsa
 from better_profanity import profanity
+import requests
 
 
 def send_data(sock, json_data):
     # Attempts to send the data to the recipient
     global client
     sock.sendto(json_data.encode(), client)
-    # After every message is sent there should be an ACK packet sent back to confirm it's arrival,
+    # After every message is sent there should be an ACK packet sent back to confirm its arrival,
     # Else it will attempt to resend the data one more time before moving on to the next address
     try:
         data, server = sock.recvfrom(4096)
@@ -47,7 +48,21 @@ def receive_data(sock, expected_message_type):
         senderKey = rsa.PublicKey.load_pkcs1(jobject.get("content").encode())
 
     elif jpacket == "message":
-        print(profanity.censor(rsa.decrypt(jobject.get("content").encode('latin-1'), privateKey).decode()))
+        pmessage = profanity.censor(rsa.decrypt(jobject.get("content").encode('latin-1'), privateKey).decode())
+        print(pmessage)
+
+        # cache = dict()
+        # def get_pmessage_from_server(pmessage):
+        #     response = requests.get(pmessage)
+        #     return response.text
+        #
+        # def get_pmessage(pmessage):
+        #     if pmessage not in cache:
+        #         cache[pmessage] = get_pmessage_from_server(pmessage)
+        #
+        #     return cache[pmessage]
+        #
+        # print("Previous messages: \n" + get_pmessage(pmessage))
 
     elif jpacket == "fin":
         print("Terminating connection")
