@@ -7,12 +7,12 @@ import datetime
 import zlib
 from better_profanity import profanity
 
-
 """"
 Use CRC32 to calculate a checksum for our data to be sent
 Take json data to compare the checksum with the calculated checksum in json object
 checksum is applied on the type and message content of the json
 """""
+
 
 def calculate_checksum(data):
     name = data.get("type")
@@ -28,7 +28,6 @@ def calculate_checksum(data):
 
 
 def send_data(sock, json_data):
-
     # checksum calculation- puts it in json object
     checksum_value = calculate_checksum(json_data)
     # append checksum to json
@@ -48,7 +47,11 @@ def send_data(sock, json_data):
         data, server = sock.recvfrom(4096)
         jobject = json.loads(data)
         jpacket = jobject.get("type")
-    # if an acknowledgement message is received, we know the data reached the recipient
+        # if an acknowledgement message is received, we know the data reached the recipient
+        if jobject.get("checksum") is not None:
+            if calculate_checksum(jobject) != int(jobject.get("checksum")):
+                print("Checksums don't match. Need to resend the packet")
+
         if jpacket == "ack":
             print("ACK packet received")
         else:
@@ -63,14 +66,13 @@ def send_data(sock, json_data):
 def receive_data(sock, expected_type):
     # Attempts to receive data from recipient
     data, server = sock.recvfrom(4096)
-
     jobject = json.loads(data)
 
     # Checks if the received packet has a checksum as it was optional for this implementation
     # if the checksums do not match then it will raise an exception
     if jobject.get("checksum") is not None:
         if calculate_checksum(jobject) != int(jobject.get("checksum")):
-            print("Checksums do not match, need the packet resent")
+            print("Checksums don't match. Need to resend the packet.")
             raise Exception()
         else:
             print("Checksums match")
@@ -88,7 +90,6 @@ def receive_data(sock, expected_type):
         receiver_key = rsa.PublicKey.load_pkcs1(jobject.get("content").encode())
     elif jpacket == "recipient_username":
         global receiver_name
-
         receiver_name = jobject.get("content")
         decode_name = base64.b64decode(receiver_name)
         receiver_name = rsa.decrypt(decode_name, privateKey).decode()
@@ -96,17 +97,24 @@ def receive_data(sock, expected_type):
     elif jpacket == "message":
         message = jobject.get("content")
         decode_message = base64.b64decode(message)
+        message = rsa.decrypt(decode_message, privateKey).decode()
+
+        filtered_message = profanity.censor(message)
+        print("\n\nHere's the message received:\n-+-+-+-+-\n"+filtered_message+"\n-+-+-+-+-\n\n")
 
     # sends an ACK packet back to confirm the data was received
     data = {"type": "ack"}
+    checksum_value = calculate_checksum(data)
+    data['checksum'] = checksum_value
+
     json_data = json.dumps(data)
     sock.sendto(json_data.encode(), UDP_ADDRESS)
+
 
 local_user = os.getlogin()
 
 # Generates a new RSA private and public key for asymmetric encryption
 publicKey, privateKey = rsa.newkeys(2048)
-
 
 # Define global variables
 global receiver_key
@@ -114,7 +122,8 @@ global receiver_name
 
 receiver_list = ""
 while receiver_list == "":
-    receiver_list = str(input("Enter the list of IP addresses you want to send greetings to with commas separating the addresses (e.g '127.0.0.1, 127.0.0.2, 127.0.0.3' ):\n"))
+    receiver_list = str(input(
+        "Enter the list of IP addresses you want to send greetings to with commas separating the addresses (e.g '127.0.0.1, 127.0.0.2, 127.0.0.3' ):\n"))
 
 receiver_list = receiver_list.replace(" ", "")
 receiver_list = receiver_list.split(",")
@@ -122,7 +131,8 @@ print(receiver_list)
 
 # This message is optional. It will be taken at the start of program execution
 optional_message = str(input("Please enter a message (optional): "))
-
+while (len(optional_message.encode()) > 200):
+    optional_message = str(input("Message can't exceed 200 bytes long (approximately 200 characters)\nPlease enter your message (optional): "))
 # Attempts to send the greeting to each IP address that the user has entered
 for i, receiver in enumerate(receiver_list):
 
@@ -136,36 +146,37 @@ for i, receiver in enumerate(receiver_list):
         # IP is legal if it's passed
     except socket.error:
         # If it's not legal
-        print("IP is not valid")
+        print("IP not valid")
         # continue, used to end the for loop iteration for the IP entered
         continue
 
     # Setting the Receiver address and establishing a socket connection, setting a timeout to 1 second
-    UDP_PORT_NO = 12001
+    UDP_PORT_NO = 12000
     UDP_ADDRESS = (UDP_IP_ADDRESS, UDP_PORT_NO)
-    socket.setdefaulttimeout(1)
+    socket.setdefaulttimeout(3)
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     """
     Synchronize packet for initiating connection
     """
     print("\n\nInitialising connection")
-    data = {"type": "sync"}
+    message = {"type": "sync"}
+    data = json.dumps(message)
 
     # Tries to send the json payload to the address
     try:
         send_data(client_socket, data)
     except socket.timeout as inst:
         # If the request times out, it attempts resending the data once. It moves on to the next address if that fails
-        print("Request timed out - Resending Data")
+        print("Request timed out: Resending Data")
         try:
             send_data(client_socket, data)
         except:
-            print("Error, cannot establish connection with current IP, moving on to next address\n\n")
+            print("IP connection error. Moving on to next address\n\n")
             client_socket.close()
             continue
     except socket.error:
-        print("Error with connection - Resending Data")
+        print("Connection error: Resending Data")
         try:
             send_data(client_socket, data)
         except:
@@ -173,7 +184,7 @@ for i, receiver in enumerate(receiver_list):
             client_socket.close()
             continue
     except:
-        print("Unknown error occurred, moving on to next IP address\n\n")
+        print("Unknown error. Moving on to next IP address\n\n")
         client_socket.close()
         continue
 
@@ -183,22 +194,22 @@ for i, receiver in enumerate(receiver_list):
     print("Exchanging public keys")
     # Converts public key to PEM format as bytes then decodes it to string
     publicKey_packet = publicKey.save_pkcs1().decode()
-    data = {"type": "sender_public_key", "content": publicKey_packet }
+    data = {"type": "sender_public_key", "content": publicKey_packet}
 
     # Tries to send the json payload to the address
     try:
         send_data(client_socket, data)
     except socket.timeout as inst:
         # If the request times out, it attempts resending the data once. It then moves on to the next address if that fails
-        print("Request timed out - Resending Data")
+        print("Request timed out: Resending Data")
         try:
             send_data(client_socket, data)
         except:
-            print("Error, cannot establish connection with current IP, moving on to next address\n\n")
+            print("Error: no connection with current IP. Moving on to next address\n\n")
             client_socket.close()
             continue
     except socket.error:
-        print("Error with connection - Resending Data")
+        print("Connection error: resending Data")
         try:
             send_data(client_socket, data)
         except:
@@ -206,10 +217,9 @@ for i, receiver in enumerate(receiver_list):
             client_socket.close()
             continue
     except:
-        print("Unknown error occurred, moving on to next IP address\n\n")
+        print("Unknown error. Moving on to next IP address\n\n")
         client_socket.close()
         continue
-
 
     try:
         receive_data(client_socket, "recipient_public_key")
@@ -233,7 +243,7 @@ for i, receiver in enumerate(receiver_list):
     """
     Sends a request for the recipient username
     """
-    print("Asking for recipient username")
+    print("Asking for recipient username...")
     data = {"type": "request_username"}
     # Tries to send the json payload to the address
     try:
@@ -266,7 +276,7 @@ for i, receiver in enumerate(receiver_list):
     try:
         receive_data(client_socket, "recipient_username")
     except socket.timeout as inst:
-        print("Socket timed out, trying again")
+        print("Socket timed out. Trying again")
         try:
             receive_data(client_socket, "recipient_username")
         except:
@@ -278,10 +288,11 @@ for i, receiver in enumerate(receiver_list):
         try:
             receive_data(client_socket, "recipient_username")
         except:
-            print("An Error occurred receiving data from the current IP, moving on to next address\n\n")
+            print("An Error occurred receiving data from the current IP. Moving on to next address\n\n")
             client_socket.close()
             continue
-    print(receiver_name)
+
+    print("Receiver's username: " + receiver_name)
 
     """ 
     Sending the greeting message
@@ -296,9 +307,10 @@ for i, receiver in enumerate(receiver_list):
     else:
         greeting = "Good Evening, "
 
+    message = profanity.censor("\n-+-+-+-+-\n" + greeting + receiver_name + ".\nYou've received another message: " + optional_message + "\n\nFrom: " + local_user + "\n-+-+-+-+-\n")
 
-    message = "\n-+-+-+-+-\n"+greeting + receiver_name + ".\nYou've received another message: "+optional_message + "\n\nFrom: " + local_user +"\n-+-+-+-+-\n"
-    print("Sending Message: \n", message+"\n")
+    print("Sending Message: \n", message + "\n")
+
     message = rsa.encrypt(message.encode(), receiver_key)
     message = base64.b64encode(message)
     message = str(message, "latin-1")
@@ -318,7 +330,7 @@ for i, receiver in enumerate(receiver_list):
             client_socket.close()
             continue
     except socket.error:
-        print("Error with connection - Resending Data")
+        print("Error with connection: Resending Data")
         try:
             send_data(client_socket, data)
         except:
@@ -344,7 +356,7 @@ for i, receiver in enumerate(receiver_list):
             client_socket.close()
             continue
     except:
-        print("An error occurred, trying again")
+        print("Error occurred: trying again")
         try:
             receive_data(client_socket, "message")
         except:
@@ -353,7 +365,7 @@ for i, receiver in enumerate(receiver_list):
             continue
 
     """
-    Ending the connection with the current receipient as the message has been sent successfully
+    Ending the connection with the current recipient as the message has been sent successfully
     """
     data = {"type": "fin"}
     # Tries to send the json payload to the address
@@ -384,3 +396,5 @@ for i, receiver in enumerate(receiver_list):
     client_socket.close()
 
     print("Terminated connection with recipient - " + str(UDP_IP_ADDRESS))
+
+print("Finished greetings.")

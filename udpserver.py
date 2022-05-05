@@ -4,79 +4,111 @@ import os
 import json
 import rsa
 from better_profanity import profanity
+import zlib
 
+
+def checksum_calculator(data):
+    name = data.get("type")
+    content = data.get("content")
+    if name is None:
+        name = ""
+    if content is None:
+        content = ""
+    checksum_sequence = name + content
+
+    checksum = zlib.crc32(bytes(checksum_sequence, "utf-8"))
+    return checksum
 
 def send_data(sock, json_data):
+    # calculates checksum and puts it in json object
+    checksum_value = checksum_calculator(json_data)
+    # append checksum to json
+    json_data['checksum'] = checksum_value
+
+    json_data = json.dumps(json_data)
+
     # Attempts to send the data to the recipient
     global client
     sock.sendto(json_data.encode(), client)
     # After every message is sent there should be an ACK packet sent back to confirm its arrival,
     # Else it will attempt to resend the data one more time before moving on to the next address
-    try:
-        data, server = sock.recvfrom(4096)
-        jobject = json.loads(data)
-        jpacket = jobject.get("type")
-        # if an acknowledgement message is received then we know the data reached the recipient correctly
-        if (jpacket == "ack"):
-            print("ACK packet received")
+    data, address = sock.recvfrom(4096)
+    jobject = json.loads(data)
+    jpacket = jobject.get("type")
+
+    if jobject.get("checksum") is None:
+        if checksum_calculator(jobject) != int(jobject.get("checksum")):
+            print("Checksums don't match. Need to resend the packet")
+            raise Exception()
         else:
-            print("No ACK packet received")
-            raise socket.error
-    except socket.timeout:
-        print("socket timed out")
+            print("Checksum on ACK matches")
+
+    # if an acknowledgement message is received then we know the data reached the recipient correctly
+    if (jpacket == "ack"):
+        print("ACK packet received")
+    else:
+        print("No ACK packet received")
+        raise socket.error
 
 
 def receive_data(sock, expected_message_type):
     # Attempts to receive data from recipient
     data, address = sock.recvfrom(4096)
-
-    # sets client address
-    global client
-    client = address
-
     jobject = json.loads(data)
+
+    if jobject.get("checksum") is not None:
+        if checksum_calculator(jobject) != int(jobject.get("checksum")):
+            print("Checksums don't match. Need to resend the packet")
+            raise Exception()
+        else:
+            print("Checksums match")
+
     jpacket = jobject.get("type")
 
     if jpacket != expected_message_type:
         raise Exception()
 
-    if jpacket == "sync":
+    if jpacket != "sync":
         print("Connection initialized with: ", client)
 
     elif jpacket == "sender_public_key":
-        global senderKey
-        senderKey = rsa.PublicKey.load_pkcs1(jobject.get("content").encode())
+        global sender_key
+        sender_key = rsa.PublicKey.load_pkcs1(jobject.get("content").encode)
 
     elif jpacket == "message":
+
         pmessage = jobject.get("content")
         decode_message = base64.b64decode(pmessage)
         pmessage = rsa.decrypt(decode_message, privateKey).decode()
-        print(profanity.censor(pmessage))
+        filtered_message = profanity.censor(pmessage)
+        message_cache.append(filtered_message)
+        print("\n\nHere's the message received:\n-+-+-+-+-\n"+filtered_message+"\n-+-+-+-+-\n\n")
 
-        # cache = dict()
-        # def get_pmessage_from_server(pmessage):
-        #     response = requests.get(pmessage)
-        #     return response.text
-        #
-        # def get_pmessage(pmessage):
-        #     if pmessage not in cache:
-        #         cache[pmessage] = get_pmessage_from_server(pmessage)
-        #
-        #     return cache[pmessage]
-        #
-        # print("Previous messages: \n" + get_pmessage(pmessage))
 
     elif jpacket == "fin":
         print("Terminating connection")
 
     # sends an ACK packet back to confirm the data was received
     data = {"type": "ack"}
+
+    # Calculates checksum. Includes it in jobject
+    checksum_value = checksum_calculator(data)
+
+    # adding checksum to json
+    data['checksum'] = checksum_value
+
     json_data = json.dumps(data)
     sock.sendto(json_data.encode(), address)
 
+
 local_user = os.getlogin()
 
-global senderKey
+reply_message = str(input("Please enter a response (optional): "))
+# Default response when user decides to not respond
+if (reply_message == ""):
+    reply_message = "\n\nThanks for the message.\n\n"
+
+global sender_key
 
 """ 
 Generates a new RSA private and public key
@@ -85,13 +117,16 @@ publicKey, privateKey = rsa.newkeys(2048)
 
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-server_socket.bind(('127.0.0.1', 12001))
-
-server_socket.settimeout(2)
+server_socket.bind('127.0.0.1', 12000)
 
 
-# Client that's sending messages to it currently
+
+# Client sending live messages to it
 global client
+
+# cache storing messages
+global message_cache
+message_cache = []
 
 print("Started receiver server")
 
@@ -112,6 +147,8 @@ while True:
     """
     try:
         receive_data(server_socket, "sender_public_key")
+    except KeyboardInterrupt:
+        break
     except:
         continue
 
@@ -121,33 +158,39 @@ while True:
     # Converts public key to PEM format as bytes
     publicKey_packet = publicKey.save_pkcs1().decode()
     message = {"type": "recipient_public_key", "content": publicKey_packet}
-    data = json.dumps(message)
+
     try:
         send_data(server_socket, data)
+        print("Sent public key")
+    except KeyboardInterrupt:
+        break
     except:
         continue
 
     """
-    Our username is requested
+    The username is requested
     """
     try:
         receive_data(server_socket, "request_username")
-    except socket.timeout as inst:
-        print("Exception occurred at 4")
+    except KeyboardInterrupt:
+        break
+    except:
         continue
 
     """
     Sending our username
     """
     # This RSA algorithm encrypts with latin-1 encoding
-    encrypt_username = rsa.encrypt(local_user.encode(), senderKey)
-    encrypt_username = base64.b16encode(encrypt_username)
-    str(encrypt_username, "latin-1")
+    encrypt_username = rsa.encrypt(local_user.encode(), sender_key)
+    encrypt_username = base64.b64encode(encrypt_username)
+    encrypt_username = str(encrypt_username, "latin-1")
 
     data = {"type": "recipient_username", "content": encrypt_username}
-    data = json.dumps(data)
+
     try:
         send_data(server_socket, data)
+    except KeyboardInterrupt:
+        break
     except:
         continue
 
@@ -156,21 +199,24 @@ while True:
     """
     try:
         receive_data(server_socket, "message")
+    except KeyboardInterrupt:
+        break
     except:
         continue
 
     """
-    Reply with our own message
+    Reply with own message
     """
-    message = "\n\nThank you for your message!\n\n"
-    message = rsa.encrypt(message.encode(), senderKey)
+    message = "\n\nThanks for the message.\n\n"
+    message = rsa.encrypt(reply_message.encode(), sender_key)
     message = base64.b64encode(message)
     message = str(message, "latin-1")
 
     data = {"type": "message", "content": message}
-    data = json.dumps(data)
     try:
         send_data(server_socket, data)
+    except KeyboardInterrupt:
+        break
     except:
         continue
 
@@ -179,6 +225,17 @@ while True:
     """
     try:
         receive_data(server_socket, "fin")
-        server_socket.close()
+    except KeyboardInterrupt:
+        break
     except:
         print("closed")
+        continue
+# close socket. clear port
+server_socket.close()
+
+print("\n\nCached messages:\n")
+
+for i, cache in enumerate(message_cache):
+    print(cache)
+
+print("\nEnd of program")
