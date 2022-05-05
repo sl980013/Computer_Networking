@@ -34,8 +34,9 @@ def send_data(sock, json_data):
     json_data['checksum'] = checksum_value
 
     json_data = json.dumps(json_data)
-
+    print("JSON data, ", json_data)
     # Attempts to send the data to the recipient
+    print("Client trying to send data...")
     sock.sendto(json_data.encode(), UDP_ADDRESS)
 
     try:
@@ -43,15 +44,21 @@ def send_data(sock, json_data):
         After every message is sent there should be an ACK packet sent back to confirm it's arrival,
         Else it will attempt to resend the data one more time before moving on to the next address
         """
-
+        print("Waiting to receive data...")
         data, server = sock.recvfrom(4096)
+        print("Received data, ", data)
         jobject = json.loads(data)
         jpacket = jobject.get("type")
         # if an acknowledgement message is received, we know the data reached the recipient
+        print("packet we are trying to send ", jpacket)
         if jobject.get("checksum") is not None:
             if calculate_checksum(jobject) != int(jobject.get("checksum")):
                 print("Checksums don't match. Need to resend the packet")
+                raise Exception()
+            else:
+                print("Checksum on ACK matches")
 
+        print("jpacket is ", jpacket)
         if jpacket == "ack":
             print("ACK packet received")
         else:
@@ -63,7 +70,7 @@ def send_data(sock, json_data):
         raise socket.error
 
 
-def receive_data(sock, expected_type):
+def receive_data(sock, expected_message_type):
     # Attempts to receive data from recipient
     data, server = sock.recvfrom(4096)
     jobject = json.loads(data)
@@ -81,7 +88,7 @@ def receive_data(sock, expected_type):
 
     print("Packet Type Received: ", jpacket)
 
-    if jpacket != expected_type:
+    if jpacket != expected_message_type:
         print("Incorrect packet type received")
         raise Exception()
 
@@ -131,7 +138,7 @@ print(receiver_list)
 
 # This message is optional. It will be taken at the start of program execution
 optional_message = str(input("Please enter a message (optional): "))
-while (len(optional_message.encode()) > 200):
+while len(optional_message.encode()) > 200:
     optional_message = str(input("Message can't exceed 200 bytes long (approximately 200 characters)\nPlease enter your message (optional): "))
 # Attempts to send the greeting to each IP address that the user has entered
 for i, receiver in enumerate(receiver_list):
@@ -153,15 +160,14 @@ for i, receiver in enumerate(receiver_list):
     # Setting the Receiver address and establishing a socket connection, setting a timeout to 1 second
     UDP_PORT_NO = 12000
     UDP_ADDRESS = (UDP_IP_ADDRESS, UDP_PORT_NO)
-    socket.setdefaulttimeout(3)
+    socket.setdefaulttimeout(5)
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     """
     Synchronize packet for initiating connection
     """
     print("\n\nInitialising connection")
-    message = {"type": "sync"}
-    data = json.dumps(message)
+    data = {"type": "sync"}
 
     # Tries to send the json payload to the address
     try:
@@ -175,8 +181,8 @@ for i, receiver in enumerate(receiver_list):
             print("IP connection error. Moving on to next address\n\n")
             client_socket.close()
             continue
-    except socket.error:
-        print("Connection error: Resending Data")
+    except socket.error as e:
+        print("Connection error: Resending Data, error: ", e)
         try:
             send_data(client_socket, data)
         except:
@@ -198,6 +204,7 @@ for i, receiver in enumerate(receiver_list):
 
     # Tries to send the json payload to the address
     try:
+        print("Client sending data ", data)
         send_data(client_socket, data)
     except socket.timeout as inst:
         # If the request times out, it attempts resending the data once. It then moves on to the next address if that fails
@@ -208,8 +215,8 @@ for i, receiver in enumerate(receiver_list):
             print("Error: no connection with current IP. Moving on to next address\n\n")
             client_socket.close()
             continue
-    except socket.error:
-        print("Connection error: resending Data")
+    except socket.error as e:
+        print("Connection error: resending Data, error: ", e)
         try:
             send_data(client_socket, data)
         except:
@@ -257,8 +264,8 @@ for i, receiver in enumerate(receiver_list):
             print("Error, can't establish connection with current IP. Moving on to next address\n\n")
             client_socket.close()
             continue
-    except socket.error:
-        print("Error with connection: Resending Data")
+    except socket.error as e:
+        print("Error with connection: Resending Data, error: ", e)
         try:
             send_data(client_socket, data)
         except:
@@ -307,7 +314,7 @@ for i, receiver in enumerate(receiver_list):
     else:
         greeting = "Good Evening, "
 
-    message = profanity.censor("\n-+-+-+-+-\n" + greeting + receiver_name + ".\nYou've received another message: " + optional_message + "\n\nFrom: " + local_user + "\n-+-+-+-+-\n")
+    message = "\n-+-+-+-+-\n" + greeting + receiver_name + ".\nYou've received another message: " + optional_message + "\n\nFrom: " + local_user + "\n-+-+-+-+-\n"
 
     print("Sending Message: \n", message + "\n")
 
@@ -395,6 +402,6 @@ for i, receiver in enumerate(receiver_list):
 
     client_socket.close()
 
-    print("Terminated connection with recipient - " + str(UDP_IP_ADDRESS))
+    print("Terminated connection with recipient: " + str(UDP_IP_ADDRESS))
 
 print("Finished greetings.")
