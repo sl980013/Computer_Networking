@@ -29,13 +29,14 @@ def send_data(sock, json_data):
 
     # Attempts to send the data to the recipient
     global client
-    print("Trying to send data...", json_data)
+    # print("Trying to send data...", json_data)
+    print("Trying to send data...")
     sock.sendto(json_data.encode(), client)
     # After every message is sent there should be an ACK packet sent back to confirm its arrival,
     # Else it will attempt to resend the data one more time before moving on to the next address
     print("Waiting to receive...")
     data, server = sock.recvfrom(4096)
-    print("Received ", data)
+    # print("Received ", data)
     jobject = json.loads(data)
     jpacket = jobject.get("type")
 
@@ -57,14 +58,14 @@ def send_data(sock, json_data):
 def receive_data(sock, expected_message_type):
     # Attempts to receive data from recipient
     data, address = sock.recvfrom(4096)
-    print("Server expected_message_type", expected_message_type)
-    print("Server received data", data)
-
+    # print("Server expected_message_type", expected_message_type)
+    # print("Server received data", data)
+    print("Server received data")
     global client
     client = address
 
     jobject = json.loads(data)
-    print("JSON data ", jobject)
+    # print("JSON data ", jobject)
 
     if jobject.get("checksum") is not None:
         if calculate_checksum(jobject) != int(jobject.get("checksum")):
@@ -74,7 +75,7 @@ def receive_data(sock, expected_message_type):
             print("Checksums match")
 
     jpacket = jobject.get("type")
-    print("Server packet ", jpacket)
+    # print("Server packet ", jpacket)
     # if jpacket != expected_message_type:
     #     print("packet is not what is expected message type. Packet ", jpacket, " expected message ", expected_message_type)
     #     raise Exception()
@@ -85,7 +86,7 @@ def receive_data(sock, expected_message_type):
     elif jpacket == "sender_public_key":
         print("Got public key")
         global sender_key
-        print("Public key is ", jobject.get("content"))
+        # print("Public key is ", jobject.get("content"))
         sender_key = rsa.PublicKey.load_pkcs1(jobject.get("content"))
 
     elif jpacket == "message":
@@ -113,11 +114,12 @@ def receive_data(sock, expected_message_type):
     data['checksum'] = checksum_value
 
     json_data = json.dumps(data)
-    print("Trying to return data to client ", json_data)
+    # print("Trying to return data to client ", json_data)
+    print("Trying to return data to client ")
     sock.sendto(json_data.encode(), address)
 
 
-local_user = os.getlogin()
+local_user = "Seoeun"
 
 reply_message = str(input("Please enter a response (optional): "))
 # Default response when user decides to not respond
@@ -200,7 +202,7 @@ while True:
     Sending our username
     """
     # This RSA algorithm encrypts with latin-1 encoding
-    encrypt_username = rsa.encrypt(str(local_user).encode(), sender_key)
+    encrypt_username = rsa.encrypt(local_user.encode(), sender_key)
     encrypt_username = base64.b64encode(encrypt_username)
     encrypt_username = str(encrypt_username, "latin-1")
 
@@ -250,7 +252,7 @@ while True:
         print("closed")
         continue
 
-    break;
+    break
 # close socket.
 server_socket.close()
 

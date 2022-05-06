@@ -34,7 +34,7 @@ def send_data(sock, json_data):
     json_data['checksum'] = checksum_value
 
     json_data = json.dumps(json_data)
-    print("JSON data, ", json_data)
+    # print("JSON data, ", json_data)
     # Attempts to send the data to the recipient
     print("Client trying to send data...")
     sock.sendto(json_data.encode(), UDP_ADDRESS)
@@ -46,11 +46,12 @@ def send_data(sock, json_data):
         """
         print("Waiting to receive data...")
         data, server = sock.recvfrom(4096)
-        print("Received data, ", data)
+        # print("Received data, ", data)
+        print("Received data")
         jobject = json.loads(data)
         jpacket = jobject.get("type")
         # if an acknowledgement message is received, we know the data reached the recipient
-        print("packet we are trying to send ", jpacket)
+        # print("packet we are trying to send ", jpacket)
         if jobject.get("checksum") is not None:
             if calculate_checksum(jobject) != int(jobject.get("checksum")):
                 print("Checksums don't match. Need to resend the packet")
@@ -58,7 +59,7 @@ def send_data(sock, json_data):
             else:
                 print("Checksum on ACK matches")
 
-        print("jpacket is ", jpacket)
+        # print("jpacket is ", jpacket)
         if jpacket == "ack":
             print("ACK packet received")
         else:
@@ -86,7 +87,7 @@ def receive_data(sock, expected_message_type):
 
     jpacket = jobject.get("type")
 
-    print("Packet Type Received: ", jpacket)
+    # print("Packet Type Received: ", jpacket)
 
     if jpacket != expected_message_type:
         print("Incorrect packet type received")
@@ -204,7 +205,8 @@ for i, receiver in enumerate(receiver_list):
 
     # Tries to send the json payload to the address
     try:
-        print("Client sending data ", data)
+        # print("Client sending data ", data)
+        print("Client sending data ")
         send_data(client_socket, data)
     except socket.timeout as inst:
         # If the request times out, it attempts resending the data once. It then moves on to the next address if that fails
@@ -299,7 +301,7 @@ for i, receiver in enumerate(receiver_list):
             client_socket.close()
             continue
 
-    print("Receiver's username: " + receiver_name)
+    print("To: " + receiver_name)
 
     """ 
     Sending the greeting message
@@ -316,7 +318,7 @@ for i, receiver in enumerate(receiver_list):
 
     message = "\n-+-+-+-+-\n" + greeting + receiver_name + ".\nYou've received another message: " + optional_message + "\n\nFrom: " + local_user + "\n-+-+-+-+-\n"
 
-    print("Sending Message: \n", message + "\n")
+    print("Sending Message: \n", profanity.censor(message) + "\n")
 
     message = rsa.encrypt(message.encode(), receiver_key)
     message = base64.b64encode(message)
