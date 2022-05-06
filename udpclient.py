@@ -158,7 +158,7 @@ for i, receiver in enumerate(receiver_list):
         # continue, used to end the for loop iteration for the IP entered
         continue
 
-    # Setting the Receiver address and establishing a socket connection, setting a timeout to 1 second
+    # Setting the Receiver address and establishing a socket connection, setting a timeout to 5 second
     UDP_PORT_NO = 12000
     UDP_ADDRESS = (UDP_IP_ADDRESS, UDP_PORT_NO)
     socket.setdefaulttimeout(5)
