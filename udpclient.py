@@ -309,9 +309,9 @@ for i, receiver in enumerate(receiver_list):
     # Checks time to put in correct greeting of Good Morning, Good Afternoon or Good Evening
     currentTime = datetime.datetime.now().hour
 
-    if currentTime < 12:
+    if 4 <= currentTime < 11:
         greeting = "Good Morning, "
-    elif 12 <= currentTime < 18:
+    elif 11 <= currentTime < 18:
         greeting = "Good Afternoon, "
     else:
         greeting = "Good Evening, "
